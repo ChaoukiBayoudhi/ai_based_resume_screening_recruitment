@@ -3,7 +3,16 @@ from django.contrib.auth.models import User
 from django.core.validators import RegexValidator, FileExtensionValidator, EmailValidator, MinValueValidator
 
 
-class Applicant(models.Model):
+class TimeStampedModel(models.Model):
+    """Abstract base class that provides self-updating created_at and updated_at fields."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class Applicant(TimeStampedModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='applicant_profile')
     full_name = models.CharField(max_length=255)
     email = models.EmailField(validators=[EmailValidator()])
@@ -28,7 +37,7 @@ class Applicant(models.Model):
         return self.full_name
 
 
-class Recruiter(models.Model):
+class Recruiter(TimeStampedModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='recruiter_profile')
     company_name = models.CharField(max_length=255)
     position = models.CharField(max_length=255)
@@ -49,7 +58,7 @@ class Recruiter(models.Model):
         return f"{self.company_name} - {self.position}"
 
 
-class Job(models.Model):
+class Job(TimeStampedModel):
     recruiter = models.ForeignKey(Recruiter, on_delete=models.CASCADE, related_name='jobs')
     applicants = models.ManyToManyField(Applicant, related_name='applied_jobs', blank=True)
     title = models.CharField(max_length=255)
@@ -70,7 +79,7 @@ class Job(models.Model):
         return self.title
 
 
-class Resume(models.Model):
+class Resume(TimeStampedModel):
     applicant = models.ForeignKey(Applicant, on_delete=models.CASCADE, related_name='resumes')
     file = models.FileField(upload_to='resumes/', validators=[
         FileExtensionValidator(['pdf', 'doc', 'docx'])
@@ -91,10 +100,17 @@ class Resume(models.Model):
         return f"Resume of {self.applicant.full_name}"
 
 
-class Interview(models.Model):
+class Interview(TimeStampedModel):
     INTERVIEW_MODE_CHOICES = [
         ('online', 'Online'),
         ('in_person', 'In Person'),
+    ]
+
+    INTERVIEW_STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('rescheduled', 'Rescheduled'),
     ]
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='interviews')
@@ -102,6 +118,7 @@ class Interview(models.Model):
     date = models.DateField()
     time = models.TimeField()
     mode = models.CharField(max_length=20, choices=INTERVIEW_MODE_CHOICES)
+    status = models.CharField(max_length=20, choices=INTERVIEW_STATUS_CHOICES, default='scheduled')
     feedback = models.TextField(blank=True)
 
     class Meta:
@@ -117,7 +134,9 @@ class Interview(models.Model):
 
     def __str__(self):
         return f"Interview for {self.applicant.full_name} on {self.date} at {self.time}"
-class ScreeningQuestion(models.Model):
+
+
+class ScreeningQuestion(TimeStampedModel):
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='screening_questions')
     question_text = models.TextField()
     answer_text = models.TextField(blank=True)
@@ -132,7 +151,9 @@ class ScreeningQuestion(models.Model):
 
     def __str__(self):
         return f"Question for {self.job.title}: {self.question_text}"
-class ScreeningAnswer(models.Model):
+
+
+class ScreeningAnswer(TimeStampedModel):
     question = models.ForeignKey(ScreeningQuestion, on_delete=models.CASCADE, related_name='answers')
     applicant = models.ForeignKey(Applicant, on_delete=models.CASCADE, related_name='screening_answers')
     answer_text = models.TextField()
@@ -150,7 +171,9 @@ class ScreeningAnswer(models.Model):
 
     def __str__(self):
         return f"Answer by {self.applicant.full_name} for question: {self.question.question_text}"
-class Feedback(models.Model):
+
+
+class Feedback(TimeStampedModel):
     interview = models.ForeignKey(Interview, on_delete=models.CASCADE, related_name='feedbacks')
     reviewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='feedbacks')
     comments = models.TextField()
@@ -166,11 +189,12 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f"Feedback for {self.interview.applicant.full_name} by {self.reviewer.username}"
-class Notification(models.Model):
+
+
+class Notification(TimeStampedModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     message = models.TextField()
     is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -182,10 +206,11 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.user.username}: {self.message}"
-class JobApplication(models.Model):
+
+
+class JobApplication(TimeStampedModel):
     applicant = models.ForeignKey(Applicant, on_delete=models.CASCADE, related_name='job_applications')
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
-    application_date = models.DateField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=[
         ('applied', 'Applied'),
         ('interviewed', 'Interviewed'),
@@ -195,7 +220,7 @@ class JobApplication(models.Model):
     ], default='applied')
 
     class Meta:
-        ordering = ['-application_date']
+        ordering = ['-created_at']
         db_table = 'job_application'
         indexes = [
             models.Index(fields=['applicant']),
@@ -207,5 +232,3 @@ class JobApplication(models.Model):
 
     def __str__(self):
         return f"Application by {self.applicant.full_name} for {self.job.title}"
-    
-    
